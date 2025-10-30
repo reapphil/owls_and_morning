@@ -1,3 +1,4 @@
+# app.py
 import os
 import numpy as np
 import pandas as pd
@@ -10,15 +11,14 @@ from filelock import FileLock
 import matplotlib.pyplot as plt
 
 # -----------------------------
-# Basic setup
+# Setup
 # -----------------------------
 DATA_FILE = "responses.csv"
 LOCK_FILE = DATA_FILE + ".lock"
-
 st.set_page_config(page_title="Morning vs. Night AI Demo", page_icon="🧠", layout="wide")
 
 # -----------------------------
-# Helpers
+# Utilities
 # -----------------------------
 def append_row(row: dict):
     lock = FileLock(LOCK_FILE)
@@ -36,33 +36,34 @@ def load_data():
         ]).to_csv(DATA_FILE, index=False)
     return pd.read_csv(DATA_FILE)
 
-# -----------------------------
-# Read URL parameter robustly
-# -----------------------------
-if hasattr(st, "query_params"):
-    # New Streamlit
-    params = st.query_params
-else:
-    # Older Streamlit fallback
-    params = st.experimental_get_query_params()
+def get_mode_param() -> str:
+    """Return 'input' or 'results' from URL ?mode=..., robust to Streamlit versions."""
+    try:
+        qp = st.query_params         # newer Streamlit: mapping with str values
+    except Exception:
+        qp = st.experimental_get_query_params()  # older: dict of lists
+    val = qp.get("mode", None)
+    if val is None:
+        return "input"
+    # Handle both str and list[str]
+    if isinstance(val, list):
+        val = val[0] if val else "input"
+    return str(val).lower().strip()
 
-mode = str(params.get("mode", ["input"])[0]).lower()
+mode = get_mode_param()
 
 # -----------------------------
-# INPUT MODE
+# Input mode
 # -----------------------------
 if mode == "input":
     st.title("🌅 Morning vs. Night — Audience Input")
-    st.write(
-        "Submit your preferences! "
-        "Then open the same app with `?mode=results` to see how the AI separates morning people from night owls."
-    )
+    st.write("Submit your preferences! Open the same URL with `?mode=results` to see the live plot.")
 
     wake = st.number_input("Wake-up time (0–23)", 0, 23, 7)
     bed = st.number_input("Bedtime (0–23)", 0, 23, 23)
     coffee = st.slider("Cups of coffee/tea per day", 0, 10, 1)
     energy = st.slider("Morning energy (1–10)", 1, 10, 6)
-    label = st.radio("Are you a morning person?", ["No", "Yes"], horizontal=True)
+    label = st.radio("Do you consider yourself a morning person?", ["No", "Yes"], horizontal=True)
 
     if st.button("Submit ✅"):
         row = {
@@ -74,15 +75,15 @@ if mode == "input":
             "label": 1 if label == "Yes" else 0,
         }
         append_row(row)
-        st.success("✅ Submitted! Switch to `?mode=results` to see yourself plotted.")
+        st.success("✅ Submitted! Switch to `?mode=results` to see the plot.")
 
 # -----------------------------
-# RESULTS MODE
+# Results mode
 # -----------------------------
 elif mode == "results":
     st.title("📊 Morning vs. Night — Results")
-    st.caption("Auto-refreshes every 5 seconds while new data comes in.")
-    st.experimental_autorefresh(interval=5000, key="refresh")
+    st.caption("Auto-refreshing every 5 seconds as new entries come in.")
+    st.experimental_autorefresh(interval=5000, key="data_refresh")
 
     df = load_data()
     if df.empty:
@@ -101,7 +102,7 @@ elif mode == "results":
     clf = LogisticRegression()
     clf.fit(Xs, y)
 
-    # Decision boundary
+    # Decision boundary grid
     x_min, x_max = X[:, 0].min() - 1, X[:, 0].max() + 1
     y_min, y_max = X[:, 1].min() - 1, X[:, 1].max() + 1
     xx, yy = np.meshgrid(
@@ -138,7 +139,7 @@ elif mode == "results":
     )
 
 # -----------------------------
-# ERROR MODE
+# Fallback
 # -----------------------------
 else:
     st.error("Unknown mode. Use `?mode=input` or `?mode=results` in the URL.")
