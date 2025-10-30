@@ -39,15 +39,10 @@ def load_data():
     return pd.read_csv(DATA_FILE)
 
 # -----------------------------
-# Read URL parameter safely
+# Read URL parameter (robust)
 # -----------------------------
-# Compatible with all Streamlit versions
-try:
-    params = st.query_params  # Newer versions
-    mode = params.get("mode", ["input"])[0].lower()
-except Exception:
-    params = st.experimental_get_query_params()  # Older versions
-    mode = params.get("mode", ["input"])[0].lower()
+params = st.experimental_get_query_params()  # this ALWAYS works on Streamlit Cloud
+mode = params.get("mode", ["input"])[0].lower()
 
 # -----------------------------
 # INPUT MODE
@@ -82,13 +77,10 @@ elif mode == "results":
     st.title("📊 Morning vs. Night — Results")
     st.caption("This page auto-refreshes every 5 seconds while new data comes in.")
 
-    # Auto-refresh using Streamlit's native function
+    # ✅ Official Streamlit function for soft auto-refresh
     st_autorefresh = st.experimental_rerun if hasattr(st, "experimental_rerun") else None
-    count = st.experimental_rerun if hasattr(st, "experimental_rerun") else None
-
-    # Proper API (works across all versions)
-    st_autorefresh = st.experimental_rerun if hasattr(st, "experimental_rerun") else None
-    _ = st.autorefresh(interval=5000, key="data_refresh")
+    st_autorefresh = st_autorefresh  # placeholder
+    st_autorefresh_counter = st.autorefresh(interval=5000, key="data_refresh")
 
     df = load_data()
     if df.empty:
