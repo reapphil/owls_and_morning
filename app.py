@@ -21,7 +21,6 @@ st.set_page_config(page_title="Morning vs. Night AI Demo", page_icon="🧠", lay
 # Helpers
 # -----------------------------
 def append_row(row: dict):
-    """Append one new response row safely to the CSV."""
     lock = FileLock(LOCK_FILE)
     if not os.path.exists(DATA_FILE):
         pd.DataFrame(columns=row.keys()).to_csv(DATA_FILE, index=False)
@@ -31,7 +30,6 @@ def append_row(row: dict):
         df.to_csv(DATA_FILE, index=False)
 
 def load_data():
-    """Load CSV or create an empty one if it doesn’t exist."""
     if not os.path.exists(DATA_FILE):
         pd.DataFrame(columns=[
             "timestamp","wake_time","bed_time","coffee","energy","label"
@@ -39,10 +37,16 @@ def load_data():
     return pd.read_csv(DATA_FILE)
 
 # -----------------------------
-# Read URL parameter
+# Read URL parameter robustly
 # -----------------------------
-params = st.query_params  # modern Streamlit (>=1.31)
-mode = params.get("mode", ["input"])[0].lower()
+if hasattr(st, "query_params"):
+    # New Streamlit
+    params = st.query_params
+else:
+    # Older Streamlit fallback
+    params = st.experimental_get_query_params()
+
+mode = str(params.get("mode", ["input"])[0]).lower()
 
 # -----------------------------
 # INPUT MODE
@@ -51,14 +55,14 @@ if mode == "input":
     st.title("🌅 Morning vs. Night — Audience Input")
     st.write(
         "Submit your preferences! "
-        "The results page (`?mode=results`) will visualize how the AI separates morning people from night owls."
+        "Then open the same app with `?mode=results` to see how the AI separates morning people from night owls."
     )
 
     wake = st.number_input("Wake-up time (0–23)", 0, 23, 7)
     bed = st.number_input("Bedtime (0–23)", 0, 23, 23)
     coffee = st.slider("Cups of coffee/tea per day", 0, 10, 1)
     energy = st.slider("Morning energy (1–10)", 1, 10, 6)
-    label = st.radio("Do you consider yourself a morning person?", ["No", "Yes"], horizontal=True)
+    label = st.radio("Are you a morning person?", ["No", "Yes"], horizontal=True)
 
     if st.button("Submit ✅"):
         row = {
@@ -70,21 +74,19 @@ if mode == "input":
             "label": 1 if label == "Yes" else 0,
         }
         append_row(row)
-        st.success("✅ Submitted! Your data is saved. Switch to `?mode=results` to see it plotted.")
+        st.success("✅ Submitted! Switch to `?mode=results` to see yourself plotted.")
 
 # -----------------------------
 # RESULTS MODE
 # -----------------------------
 elif mode == "results":
     st.title("📊 Morning vs. Night — Results")
-    st.caption("This page auto-refreshes every 5 seconds while new data comes in.")
-
-    # ✅ correct function name in Streamlit
-    st.experimental_autorefresh(interval=5000, key="data_refresh")
+    st.caption("Auto-refreshes every 5 seconds while new data comes in.")
+    st.experimental_autorefresh(interval=5000, key="refresh")
 
     df = load_data()
     if df.empty:
-        st.info("No data yet — switch to `?mode=input` and submit a few entries.")
+        st.info("No data yet — go to `?mode=input` and submit a few entries.")
         st.stop()
 
     X = df[["wake_time", "bed_time"]].astype(float).values
@@ -99,7 +101,7 @@ elif mode == "results":
     clf = LogisticRegression()
     clf.fit(Xs, y)
 
-    # Create decision boundary
+    # Decision boundary
     x_min, x_max = X[:, 0].min() - 1, X[:, 0].max() + 1
     y_min, y_max = X[:, 1].min() - 1, X[:, 1].max() + 1
     xx, yy = np.meshgrid(
@@ -114,18 +116,16 @@ elif mode == "results":
     ax.scatter(X[:, 0], X[:, 1], c=y, cmap="bwr", edgecolor="k", s=80)
     ax.set_xlabel("Wake-up time (0–23)")
     ax.set_ylabel("Bedtime (0–23)")
-    ax.set_title("Decision Boundary — Morning (blue) vs. Night (red)")
+    ax.set_title("Decision Boundary — Morning (blue) vs Night (red)")
     st.pyplot(fig)
 
-    # Quick stats
     st.markdown("---")
     st.subheader("📈 Model Stats")
     if len(y) >= 6:
         split = int(0.8 * len(y))
         Xtr, Xte = Xs[:split], Xs[split:]
         ytr, yte = y[:split], y[split:]
-        clf2 = LogisticRegression().fit(Xtr, ytr)
-        acc = accuracy_score(yte, clf2.predict(Xte))
+        acc = accuracy_score(yte, LogisticRegression().fit(Xtr, ytr).predict(Xte))
         st.metric("Holdout accuracy", f"{acc*100:.1f}%")
     else:
         st.write("Need a few more responses to estimate accuracy.")
@@ -141,4 +141,4 @@ elif mode == "results":
 # ERROR MODE
 # -----------------------------
 else:
-    st.error("Unknown mode. Use ?mode=input or ?mode=results in the URL.")
+    st.error("Unknown mode. Use `?mode=input` or `?mode=results` in the URL.")
