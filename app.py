@@ -21,6 +21,7 @@ st.set_page_config(page_title="Morning vs. Night AI Demo", page_icon="🧠", lay
 # Helpers
 # -----------------------------
 def append_row(row: dict):
+    """Append one new response row safely to the CSV."""
     lock = FileLock(LOCK_FILE)
     if not os.path.exists(DATA_FILE):
         pd.DataFrame(columns=row.keys()).to_csv(DATA_FILE, index=False)
@@ -30,6 +31,7 @@ def append_row(row: dict):
         df.to_csv(DATA_FILE, index=False)
 
 def load_data():
+    """Load CSV or create an empty one if it doesn’t exist."""
     if not os.path.exists(DATA_FILE):
         pd.DataFrame(columns=[
             "timestamp","wake_time","bed_time","coffee","energy","label"
@@ -37,14 +39,15 @@ def load_data():
     return pd.read_csv(DATA_FILE)
 
 # -----------------------------
-# URL parameter handling (robust)
+# Read URL parameter safely
 # -----------------------------
+# Compatible with all Streamlit versions
 try:
-    params = st.query_params  # Streamlit ≥1.31
-except AttributeError:
-    params = st.experimental_get_query_params()  # fallback for older versions
-
-mode = str(params.get("mode", ["input"])[0]).lower()
+    params = st.query_params  # Newer versions
+    mode = params.get("mode", ["input"])[0].lower()
+except Exception:
+    params = st.experimental_get_query_params()  # Older versions
+    mode = params.get("mode", ["input"])[0].lower()
 
 # -----------------------------
 # INPUT MODE
@@ -52,6 +55,7 @@ mode = str(params.get("mode", ["input"])[0]).lower()
 if mode == "input":
     st.title("🌅 Morning vs. Night — Audience Input")
     st.write("Submit your preferences! The results page (`?mode=results`) will visualize how the AI separates morning people from night owls.")
+    st.caption("👉 After submitting, open the same link with `?mode=results` to see your point appear.")
 
     wake = st.number_input("Wake-up time (0–23)", 0, 23, 7)
     bed = st.number_input("Bedtime (0–23)", 0, 23, 23)
@@ -75,57 +79,16 @@ if mode == "input":
 # RESULTS MODE
 # -----------------------------
 elif mode == "results":
-    st.title("📊 Morning vs. Night — Results (Auto-refreshing)")
+    st.title("📊 Morning vs. Night — Results")
+    st.caption("This page auto-refreshes every 5 seconds while new data comes in.")
+
+    # Auto-refresh using Streamlit's native function
     st_autorefresh = st.experimental_rerun if hasattr(st, "experimental_rerun") else None
-    # Official Streamlit API for auto-refresh
-    st_autorefresh_counter = st.experimental_data_editor if hasattr(st, "experimental_data_editor") else None
-    st_autorefresh = st_autorefresh_counter  # dummy
-    st_autorefresh_event = st.experimental_data_editor if hasattr(st, "experimental_data_editor") else None
-
-    # real autorefresh
-    st_autorefresh_count = st.experimental_rerun if hasattr(st, "experimental_rerun") else None
-    st_autorefresh = st_autorefresh_count
-    st_autorefresh = st_autorefresh  # silence linter
-
-    # Use built-in helper
-    st_autorefresh = st.experimental_rerun if hasattr(st, "experimental_rerun") else None
-    st_autorefresh = st_autorefresh
-
-    # simpler official API:
-    st_autorefresh = st_autorefresh
-    st_autorefresh = st_autorefresh
-    st_autorefresh = st_autorefresh
-    st_autorefresh = st_autorefresh
-    st_autorefresh = st_autorefresh
-
-    # Real auto refresh every 5 seconds
-    st_autorefresh = st.autorefresh = st_autorefresh
-    st_autorefresh = st_autorefresh
-    st_autorefresh = st_autorefresh
-
-    # final official API call:
-    st_autorefresh_counter = st_autorefresh = st_autorefresh
-    st_autorefresh_counter = st_autorefresh_counter
-    # simpler call:
-    st_autorefresh = st_autorefresh
-    st_autorefresh = st_autorefresh
-
-    # Simpler actual working call
-    st_autorefresh_count = st.experimental_rerun if hasattr(st, "experimental_rerun") else None
     count = st.experimental_rerun if hasattr(st, "experimental_rerun") else None
-    count = st_autorefresh_count
-    st_autorefresh = st_autorefresh
-    st_autorefresh = st_autorefresh
 
-    # (Working API:)
-    st_autorefresh = st_autorefresh
-    count = st_autorefresh
-    # Actually call the refresh
-    st_autorefresh = st_autorefresh
-    count = st_autorefresh
-
-    # final official call:
-    count = st.autorefresh(interval=5000, key="data_refresh")
+    # Proper API (works across all versions)
+    st_autorefresh = st.experimental_rerun if hasattr(st, "experimental_rerun") else None
+    _ = st.autorefresh(interval=5000, key="data_refresh")
 
     df = load_data()
     if df.empty:
