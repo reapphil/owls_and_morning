@@ -39,9 +39,9 @@ def load_data():
     return pd.read_csv(DATA_FILE)
 
 # -----------------------------
-# Read URL parameter (robust)
+# Read URL parameter
 # -----------------------------
-params = st.experimental_get_query_params()  # this ALWAYS works on Streamlit Cloud
+params = st.query_params  # modern Streamlit (>=1.31)
 mode = params.get("mode", ["input"])[0].lower()
 
 # -----------------------------
@@ -49,8 +49,10 @@ mode = params.get("mode", ["input"])[0].lower()
 # -----------------------------
 if mode == "input":
     st.title("🌅 Morning vs. Night — Audience Input")
-    st.write("Submit your preferences! The results page (`?mode=results`) will visualize how the AI separates morning people from night owls.")
-    st.caption("👉 After submitting, open the same link with `?mode=results` to see your point appear.")
+    st.write(
+        "Submit your preferences! "
+        "The results page (`?mode=results`) will visualize how the AI separates morning people from night owls."
+    )
 
     wake = st.number_input("Wake-up time (0–23)", 0, 23, 7)
     bed = st.number_input("Bedtime (0–23)", 0, 23, 23)
@@ -77,10 +79,8 @@ elif mode == "results":
     st.title("📊 Morning vs. Night — Results")
     st.caption("This page auto-refreshes every 5 seconds while new data comes in.")
 
-    # ✅ Official Streamlit function for soft auto-refresh
-    st_autorefresh = st.experimental_rerun if hasattr(st, "experimental_rerun") else None
-    st_autorefresh = st_autorefresh  # placeholder
-    st_autorefresh_counter = st.autorefresh(interval=5000, key="data_refresh")
+    # ✅ correct function name in Streamlit
+    st.experimental_autorefresh(interval=5000, key="data_refresh")
 
     df = load_data()
     if df.empty:
@@ -102,8 +102,10 @@ elif mode == "results":
     # Create decision boundary
     x_min, x_max = X[:, 0].min() - 1, X[:, 0].max() + 1
     y_min, y_max = X[:, 1].min() - 1, X[:, 1].max() + 1
-    xx, yy = np.meshgrid(np.linspace(x_min, x_max, 200),
-                         np.linspace(y_min, y_max, 200))
+    xx, yy = np.meshgrid(
+        np.linspace(x_min, x_max, 200),
+        np.linspace(y_min, y_max, 200)
+    )
     grid = np.c_[xx.ravel(), yy.ravel()]
     Z = clf.predict_proba(scaler.transform(grid))[:, 1].reshape(xx.shape)
 
