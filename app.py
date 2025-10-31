@@ -79,7 +79,12 @@ def generate_sample_data(n=100):
 
     # Add small random label noise (~5%)
     flip_mask = np.random.rand(n) < 0.05
-    df.loc[flip_ma_]()
+    df.loc[flip_mask, "label"] = 1 - df.loc[flip_mask, "label"]
+
+    # Shuffle data for randomness
+    df = df.sample(frac=1, random_state=99).reset_index(drop=True)
+    return df
+
 
 
 def load_data():
