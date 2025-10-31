@@ -22,7 +22,7 @@ LOCK_FILE = DATA_FILE + ".lock"
 st.set_page_config(page_title="Morning vs. Night AI Demo", page_icon="🧠", layout="wide")
 
 # -----------------------------
-# Helpers
+# Utility functions
 # -----------------------------
 def ensure_columns(df):
     expected = ["timestamp", "wake_time", "bed_time", "coffee", "energy", "label"]
@@ -44,12 +44,42 @@ def append_row(row):
     except Timeout:
         st.error("File is busy — please try again in a few seconds.")
 
+def generate_sample_data(n=50):
+    np.random.seed(42)
+    n_half = n // 2
+
+    # Morning people: early wake, early bed, less coffee, higher morning energy
+    morning = pd.DataFrame({
+        "timestamp": [datetime.now(timezone.utc).isoformat()] * n_half,
+        "wake_time": np.clip(np.random.normal(0.2, 0.1, n_half), 0, 1),
+        "bed_time": np.clip(np.random.normal(0.3, 0.1, n_half), 0, 1),
+        "coffee": np.clip(np.random.normal(0.3, 0.1, n_half), 0, 1),
+        "energy": np.clip(np.random.normal(0.8, 0.1, n_half), 0, 1),
+        "label": [1] * n_half,  # 1 = morning
+    })
+
+    # Night owls: late wake, late bed, more coffee, lower morning energy
+    night = pd.DataFrame({
+        "timestamp": [datetime.now(timezone.utc).isoformat()] * n_half,
+        "wake_time": np.clip(np.random.normal(0.8, 0.1, n_half), 0, 1),
+        "bed_time": np.clip(np.random.normal(0.8, 0.1, n_half), 0, 1),
+        "coffee": np.clip(np.random.normal(0.7, 0.1, n_half), 0, 1),
+        "energy": np.clip(np.random.normal(0.3, 0.1, n_half), 0, 1),
+        "label": [0] * n_half,  # 0 = night
+    })
+    return pd.concat([morning, night], ignore_index=True)
+
 def load_data():
     if not os.path.exists(DATA_FILE):
-        pd.DataFrame(columns=[
-            "timestamp","wake_time","bed_time","coffee","energy","label"
-        ]).to_csv(DATA_FILE, index=False)
-    return ensure_columns(pd.read_csv(DATA_FILE))
+        # Initialize with synthetic data
+        df = generate_sample_data()
+        df.to_csv(DATA_FILE, index=False)
+        return df
+    df = pd.read_csv(DATA_FILE)
+    if df.empty:
+        df = generate_sample_data()
+        df.to_csv(DATA_FILE, index=False)
+    return ensure_columns(df)
 
 def get_mode():
     try:
@@ -85,10 +115,10 @@ mode = get_mode()
 if mode == "input":
     st.title("🌅 Morning vs. Night — Audience Input")
 
-    wake = st.slider("Wake-up time (hour, 3 AM – 12 PM)", 3, 12, 7)
-    bed = st.slider("Bedtime (hour, 6 PM – 12 AM)", 18, 24, 23)
-    coffee = st.slider("Cups of coffee/tea per day", 0, 10, 1)
-    energy = st.slider("Morning energy (1–10)", 1, 10, 6)
+    wake = st.slider("Wake-up time (very early ⟶ very late)", 0.0, 1.0, 0.5)
+    bed = st.slider("Bedtime (very early ⟶ very late)", 0.0, 1.0, 0.5)
+    coffee = st.slider("Coffee/tea consumption (no coffee ⟶ a lot of coffee)", 0.0, 1.0, 0.5)
+    energy = st.slider("Morning energy (very low ⟶ very high)", 0.0, 1.0, 0.5)
     label = st.radio("Are you a morning person?", ["No", "Yes"], horizontal=True)
 
     if st.button("Submit ✅"):
@@ -112,30 +142,22 @@ elif mode == "results":
     st.caption("Auto-refreshes every 20 seconds as new entries arrive.")
     st.session_state.setdefault("last_refresh", time.time())
 
-    # Refresh only every 20s
+    # Refresh every 20s
     if time.time() - st.session_state["last_refresh"] > 20:
         st.session_state["last_refresh"] = time.time()
         st.experimental_rerun()
 
-    # Clear button
+    # Clear data button
     if st.button("🗑️ Clear all responses"):
         if os.path.exists(DATA_FILE):
             os.remove(DATA_FILE)
-        st.success("All responses deleted. Waiting for new submissions...")
+        st.success("All responses deleted. Synthetic data will repopulate on next load.")
         st.stop()
 
     df = load_data()
-    if df.empty or df["label"].isna().all():
-        st.info("No data yet — collect some responses first.")
-        st.stop()
-
     df = df.dropna(subset=["wake_time", "bed_time", "label"])
     X = df[["wake_time", "bed_time"]].astype(float).values
     y = df["label"].astype(int).values
-
-    if len(np.unique(y)) < 2:
-        st.warning("Need at least one Morning Person and one Night Owl to draw a boundary.")
-        st.stop()
 
     # Sidebar model selector
     st.sidebar.header("⚙️ Model Settings")
@@ -154,29 +176,27 @@ elif mode == "results":
         depth = st.sidebar.slider("Max depth", 1, 10, 3)
         model = DecisionTreeClassifier(max_depth=depth, random_state=42)
 
+    # Train and plot
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
     model.fit(Xs, y)
 
-    # Decision boundary
-    x_min, x_max = X[:, 0].min() - 1, X[:, 0].max() + 1
-    y_min, y_max = X[:, 1].min() - 1, X[:, 1].max() + 1
+    x_min, x_max = X[:, 0].min() - 0.1, X[:, 0].max() + 0.1
+    y_min, y_max = X[:, 1].min() - 0.1, X[:, 1].max() + 0.1
     xx, yy = np.meshgrid(
         np.linspace(x_min, x_max, 200),
         np.linspace(y_min, y_max, 200)
     )
     Z = model.predict_proba(scaler.transform(np.c_[xx.ravel(), yy.ravel()]))[:, 1].reshape(xx.shape)
 
-    # Plot at 50% width
     fig, ax = plt.subplots(figsize=(5, 4))
     ax.contourf(xx, yy, Z, levels=30, cmap="coolwarm", alpha=0.3)
     ax.scatter(X[:, 0], X[:, 1], c=y, cmap="bwr", edgecolor="k", s=70)
-    ax.set_xlabel("Wake-up time (3–12)")
-    ax.set_ylabel("Bedtime (18–24)")
+    ax.set_xlabel("Wake-up time (early ⟶ late)")
+    ax.set_ylabel("Bedtime (early ⟶ late)")
     ax.set_title(f"Decision Boundary — {model_name}")
     render_matplotlib(fig, width_pct=50)
 
-    # Stats
     st.markdown("---")
     st.subheader("📈 Model Stats")
     st.write(f"👥 {len(y)} responses collected.")
@@ -186,8 +206,6 @@ elif mode == "results":
         ytr, yte = y[:split], y[split:]
         acc = accuracy_score(yte, model.fit(Xtr, ytr).predict(Xte))
         st.metric("Holdout accuracy", f"{acc*100:.1f}%")
-    else:
-        st.write("Need more responses to estimate accuracy.")
 
     st.download_button(
         "⬇️ Download responses (CSV)",
