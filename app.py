@@ -1,28 +1,29 @@
 import os
+import io
+import base64
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from datetime import datetime, timezone
 import streamlit as st
+from filelock import FileLock, Timeout
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score
-from filelock import FileLock, Timeout
-import matplotlib.pyplot as plt
-import io
-import base64
 
 # -----------------------------
 # Setup
 # -----------------------------
-DATA_FILE = "responses.csv"
-LOCK_FILE = DATA_FILE + ".lock"
 st.set_page_config(page_title="Morning vs. Night AI Demo", page_icon="🧠", layout="wide")
 
+DATA_FILE = "responses.csv"
+LOCK_FILE = DATA_FILE + ".lock"
+
 # -----------------------------
-# Utility functions
+# Data utilities
 # -----------------------------
 def ensure_columns(df):
     expected = ["timestamp", "wake_time", "bed_time", "coffee", "energy", "label"]
@@ -49,43 +50,39 @@ def generate_sample_data(n=100):
     np.random.seed(42)
     n_half = n // 2
 
-    # Morning people: earlier wake/bed, moderate coffee, higher energy
+    # Morning people
     morning = pd.DataFrame({
         "timestamp": [datetime.now(timezone.utc).isoformat()] * n_half,
         "wake_time": np.clip(np.random.normal(0.35, 0.15, n_half), 0, 1),
         "bed_time": np.clip(np.random.normal(0.4, 0.15, n_half), 0, 1),
         "coffee": np.clip(np.random.normal(0.45, 0.2, n_half), 0, 1),
         "energy": np.clip(np.random.normal(0.7, 0.2, n_half), 0, 1),
-        "label": [1] * n_half,  # 1 = morning
+        "label": [1] * n_half,
     })
 
-    # Night owls: later wake/bed, more coffee, lower morning energy
+    # Night owls
     night = pd.DataFrame({
         "timestamp": [datetime.now(timezone.utc).isoformat()] * n_half,
         "wake_time": np.clip(np.random.normal(0.65, 0.15, n_half), 0, 1),
         "bed_time": np.clip(np.random.normal(0.65, 0.15, n_half), 0, 1),
         "coffee": np.clip(np.random.normal(0.6, 0.2, n_half), 0, 1),
         "energy": np.clip(np.random.normal(0.45, 0.2, n_half), 0, 1),
-        "label": [0] * n_half,  # 0 = night
+        "label": [0] * n_half,
     })
 
     df = pd.concat([morning, night], ignore_index=True)
 
-    # Add mild correlation and noise to make clusters natural
+    # Add mild correlation and noise
     df["wake_time"] = np.clip(
         df["wake_time"] * 0.7 + df["bed_time"] * 0.3 + np.random.normal(0, 0.05, n),
         0, 1
     )
 
-    # Add small random label noise (~5%)
+    # Add 5% label noise
     flip_mask = np.random.rand(n) < 0.05
     df.loc[flip_mask, "label"] = 1 - df.loc[flip_mask, "label"]
 
-    # Shuffle data for randomness
-    df = df.sample(frac=1, random_state=99).reset_index(drop=True)
-    return df
-
-
+    return df.sample(frac=1, random_state=99).reset_index(drop=True)
 
 def load_data():
     if not os.path.exists(DATA_FILE):
@@ -134,7 +131,7 @@ if mode == "input":
 
     wake = st.slider("Wake-up time (very early ⟶ very late)", 0.0, 1.0, 0.5)
     bed = st.slider("Bedtime (very early ⟶ very late)", 0.0, 1.0, 0.5)
-    coffee = st.slider("Coffee/tea consumption (no coffee ⟶ a lot of coffee)", 0.0, 1.0, 0.5)
+    coffee = st.slider("Coffee consumption (no coffee ⟶ a lot of coffee)", 0.0, 1.0, 0.5)
     energy = st.slider("Morning energy (very low ⟶ very high)", 0.0, 1.0, 0.5)
     label = st.radio("Are you a morning person?", ["No", "Yes"], horizontal=True)
 
@@ -166,7 +163,6 @@ elif mode == "results":
     X = df[["wake_time", "bed_time"]].astype(float).values
     y = df["label"].astype(int).values
 
-    # Sidebar model selector
     st.sidebar.header("⚙️ Model Settings")
     model_name = st.sidebar.selectbox(
         "Select model type:",
@@ -183,24 +179,40 @@ elif mode == "results":
         depth = st.sidebar.slider("Max depth", 1, 10, 3)
         model = DecisionTreeClassifier(max_depth=depth, random_state=42)
     else:
-        hidden = st.sidebar.slider("Hidden layer size", 2, 50, 10)
-        model = MLPClassifier(hidden_layer_sizes=(hidden,), max_iter=2000, random_state=42)
+        st.sidebar.subheader("🧠 Neural Network Settings")
+        num_layers = st.sidebar.slider("Hidden layers", 1, 4, 2)
+        neurons = st.sidebar.slider("Neurons per layer", 2, 20, 8)
+        activation = st.sidebar.selectbox("Activation", ["relu", "tanh", "logistic"])
+        alpha = st.sidebar.slider("Regularization (alpha)", 0.0001, 0.05, 0.001, step=0.0005)
+        lr = st.sidebar.slider("Learning rate", 0.0001, 0.1, 0.01, step=0.0005)
+        iters = st.sidebar.slider("Iterations", 200, 5000, 2000, step=100)
 
-    # Train and plot
+        hidden_layers = tuple([neurons] * num_layers)
+        model = MLPClassifier(
+            hidden_layer_sizes=hidden_layers,
+            activation=activation,
+            alpha=alpha,
+            learning_rate_init=lr,
+            max_iter=iters,
+            random_state=42
+        )
+
+    # Train
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
     model.fit(Xs, y)
 
+    # Decision boundary
     x_min, x_max = X[:, 0].min() - 0.1, X[:, 0].max() + 0.1
     y_min, y_max = X[:, 1].min() - 0.1, X[:, 1].max() + 0.1
     xx, yy = np.meshgrid(
-        np.linspace(x_min, x_max, 200),
-        np.linspace(y_min, y_max, 200)
+        np.linspace(x_min, x_max, 300),
+        np.linspace(y_min, y_max, 300)
     )
     Z = model.predict_proba(scaler.transform(np.c_[xx.ravel(), yy.ravel()]))[:, 1].reshape(xx.shape)
 
     fig, ax = plt.subplots(figsize=(5, 4))
-    ax.contourf(xx, yy, Z, levels=30, cmap="coolwarm", alpha=0.3)
+    cs = ax.contourf(xx, yy, Z, levels=30, cmap="coolwarm", alpha=0.25)
     ax.scatter(X[:, 0], X[:, 1], c=y, cmap="bwr", edgecolor="k", s=70)
     ax.set_xlabel("Wake-up time (early ⟶ late)")
     ax.set_ylabel("Bedtime (early ⟶ late)")
@@ -228,4 +240,4 @@ elif mode == "results":
 # FALLBACK
 # -----------------------------
 else:
-    st.error("Unknown mode. Use `?mode=input` or `?mode=results` in the URL.")
+    st.error("Unknown mode. Use ?mode=input or ?mode=results in the URL.")
