@@ -7,12 +7,12 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score
 from filelock import FileLock, Timeout
 import matplotlib.pyplot as plt
 import io
 import base64
-import time
 
 # -----------------------------
 # Setup
@@ -45,33 +45,37 @@ def append_row(row):
         st.error("File is busy — please try again in a few seconds.")
 
 def generate_sample_data(n=50):
+    """Generate fuzzier overlapping sample data."""
     np.random.seed(42)
     n_half = n // 2
 
-    # Morning people: early wake, early bed, less coffee, higher morning energy
+    # Morning people
     morning = pd.DataFrame({
         "timestamp": [datetime.now(timezone.utc).isoformat()] * n_half,
-        "wake_time": np.clip(np.random.normal(0.2, 0.1, n_half), 0, 1),
-        "bed_time": np.clip(np.random.normal(0.3, 0.1, n_half), 0, 1),
-        "coffee": np.clip(np.random.normal(0.3, 0.1, n_half), 0, 1),
-        "energy": np.clip(np.random.normal(0.8, 0.1, n_half), 0, 1),
+        "wake_time": np.clip(np.random.normal(0.35, 0.2, n_half), 0, 1),
+        "bed_time": np.clip(np.random.normal(0.4, 0.2, n_half), 0, 1),
+        "coffee": np.clip(np.random.normal(0.4, 0.25, n_half), 0, 1),
+        "energy": np.clip(np.random.normal(0.7, 0.25, n_half), 0, 1),
         "label": [1] * n_half,  # 1 = morning
     })
 
-    # Night owls: late wake, late bed, more coffee, lower morning energy
+    # Night owls
     night = pd.DataFrame({
         "timestamp": [datetime.now(timezone.utc).isoformat()] * n_half,
-        "wake_time": np.clip(np.random.normal(0.8, 0.1, n_half), 0, 1),
-        "bed_time": np.clip(np.random.normal(0.8, 0.1, n_half), 0, 1),
-        "coffee": np.clip(np.random.normal(0.7, 0.1, n_half), 0, 1),
-        "energy": np.clip(np.random.normal(0.3, 0.1, n_half), 0, 1),
+        "wake_time": np.clip(np.random.normal(0.7, 0.2, n_half), 0, 1),
+        "bed_time": np.clip(np.random.normal(0.7, 0.2, n_half), 0, 1),
+        "coffee": np.clip(np.random.normal(0.6, 0.25, n_half), 0, 1),
+        "energy": np.clip(np.random.normal(0.4, 0.25, n_half), 0, 1),
         "label": [0] * n_half,  # 0 = night
     })
-    return pd.concat([morning, night], ignore_index=True)
+
+    df = pd.concat([morning, night], ignore_index=True)
+    # Add extra shuffle and noise for overlap
+    df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+    return df
 
 def load_data():
     if not os.path.exists(DATA_FILE):
-        # Initialize with synthetic data
         df = generate_sample_data()
         df.to_csv(DATA_FILE, index=False)
         return df
@@ -131,23 +135,13 @@ if mode == "input":
             "label": 1 if label == "Yes" else 0,
         })
         st.success("✅ Submitted! Thank you for participating!")
-        time.sleep(1)
-        st.experimental_rerun()
 
 # -----------------------------
 # RESULTS PAGE
 # -----------------------------
 elif mode == "results":
     st.title("📊 Morning vs. Night — Results")
-    st.caption("Auto-refreshes every 20 seconds as new entries arrive.")
-    st.session_state.setdefault("last_refresh", time.time())
 
-    # Refresh every 20s
-    if time.time() - st.session_state["last_refresh"] > 20:
-        st.session_state["last_refresh"] = time.time()
-        st.experimental_rerun()
-
-    # Clear data button
     if st.button("🗑️ Clear all responses"):
         if os.path.exists(DATA_FILE):
             os.remove(DATA_FILE)
@@ -163,7 +157,7 @@ elif mode == "results":
     st.sidebar.header("⚙️ Model Settings")
     model_name = st.sidebar.selectbox(
         "Select model type:",
-        ["Logistic Regression", "k-Nearest Neighbors", "Decision Tree"],
+        ["Logistic Regression", "k-Nearest Neighbors", "Decision Tree", "Neural Network"],
         index=0
     )
 
@@ -172,9 +166,12 @@ elif mode == "results":
     elif model_name == "k-Nearest Neighbors":
         k = st.sidebar.slider("Number of neighbors (k)", 1, 15, 5)
         model = KNeighborsClassifier(n_neighbors=k)
-    else:
+    elif model_name == "Decision Tree":
         depth = st.sidebar.slider("Max depth", 1, 10, 3)
         model = DecisionTreeClassifier(max_depth=depth, random_state=42)
+    else:
+        hidden = st.sidebar.slider("Hidden layer size", 2, 50, 10)
+        model = MLPClassifier(hidden_layer_sizes=(hidden,), max_iter=2000, random_state=42)
 
     # Train and plot
     scaler = StandardScaler()
