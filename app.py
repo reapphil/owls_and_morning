@@ -8,10 +8,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score
-from filelock import FileLock
+from filelock import FileLock, Timeout
 import matplotlib.pyplot as plt
 import io
 import base64
+import time
 
 # -----------------------------
 # Setup
@@ -21,7 +22,7 @@ LOCK_FILE = DATA_FILE + ".lock"
 st.set_page_config(page_title="Morning vs. Night AI Demo", page_icon="🧠", layout="wide")
 
 # -----------------------------
-# Utility functions
+# Helpers
 # -----------------------------
 def ensure_columns(df):
     expected = ["timestamp", "wake_time", "bed_time", "coffee", "energy", "label"]
@@ -32,21 +33,23 @@ def ensure_columns(df):
 
 def append_row(row):
     lock = FileLock(LOCK_FILE)
-    if not os.path.exists(DATA_FILE):
-        pd.DataFrame(columns=row.keys()).to_csv(DATA_FILE, index=False)
-    with lock:
-        df = pd.read_csv(DATA_FILE)
-        df = ensure_columns(df)
-        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-        df.to_csv(DATA_FILE, index=False)
+    try:
+        with lock.acquire(timeout=3):
+            if not os.path.exists(DATA_FILE):
+                pd.DataFrame(columns=row.keys()).to_csv(DATA_FILE, index=False)
+            df = pd.read_csv(DATA_FILE)
+            df = ensure_columns(df)
+            df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+            df.to_csv(DATA_FILE, index=False)
+    except Timeout:
+        st.error("File is busy — please try again in a few seconds.")
 
 def load_data():
     if not os.path.exists(DATA_FILE):
         pd.DataFrame(columns=[
             "timestamp","wake_time","bed_time","coffee","energy","label"
         ]).to_csv(DATA_FILE, index=False)
-    df = pd.read_csv(DATA_FILE)
-    return ensure_columns(df)
+    return ensure_columns(pd.read_csv(DATA_FILE))
 
 def get_mode():
     try:
@@ -59,17 +62,17 @@ def get_mode():
     return str(val).lower().strip()
 
 def render_matplotlib(fig, width_pct=50):
-    """Render matplotlib figure responsively in Streamlit (as 50% width)."""
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight")
     buf.seek(0)
     encoded = base64.b64encode(buf.read()).decode()
     html = f"""
-    <div style='display: flex; justify-content: center;'>
-        <img src='data:image/png;base64,{encoded}' style='width:{width_pct}%; height:auto; border-radius:10px; box-shadow:0 0 10px rgba(0,0,0,0.1);'/>
+    <div style='display:flex;justify-content:center;'>
+        <img src='data:image/png;base64,{encoded}' style='width:{width_pct}%;height:auto;border-radius:10px;box-shadow:0 0 10px rgba(0,0,0,0.1);'/>
     </div>
     """
     st.markdown(html, unsafe_allow_html=True)
+    plt.close(fig)
 
 # -----------------------------
 # Determine mode
@@ -81,8 +84,6 @@ mode = get_mode()
 # -----------------------------
 if mode == "input":
     st.title("🌅 Morning vs. Night — Audience Input")
-
-    # Removed the instructional line here (for lecturers only)
 
     wake = st.slider("Wake-up time (hour, 3 AM – 12 PM)", 3, 12, 7)
     bed = st.slider("Bedtime (hour, 6 PM – 12 AM)", 18, 24, 23)
@@ -100,6 +101,8 @@ if mode == "input":
             "label": 1 if label == "Yes" else 0,
         })
         st.success("✅ Submitted! Thank you for participating!")
+        time.sleep(1)
+        st.experimental_rerun()
 
 # -----------------------------
 # RESULTS PAGE
@@ -107,8 +110,14 @@ if mode == "input":
 elif mode == "results":
     st.title("📊 Morning vs. Night — Results")
     st.caption("Auto-refreshes every 20 seconds as new entries arrive.")
-    st.markdown('<meta http-equiv="refresh" content="20">', unsafe_allow_html=True)
+    st.session_state.setdefault("last_refresh", time.time())
 
+    # Refresh only every 20s
+    if time.time() - st.session_state["last_refresh"] > 20:
+        st.session_state["last_refresh"] = time.time()
+        st.experimental_rerun()
+
+    # Clear button
     if st.button("🗑️ Clear all responses"):
         if os.path.exists(DATA_FILE):
             os.remove(DATA_FILE)
@@ -117,7 +126,7 @@ elif mode == "results":
 
     df = load_data()
     if df.empty or df["label"].isna().all():
-        st.info("No data yet — go to `?mode=input` and submit a few entries.")
+        st.info("No data yet — collect some responses first.")
         st.stop()
 
     df = df.dropna(subset=["wake_time", "bed_time", "label"])
@@ -145,7 +154,6 @@ elif mode == "results":
         depth = st.sidebar.slider("Max depth", 1, 10, 3)
         model = DecisionTreeClassifier(max_depth=depth, random_state=42)
 
-    # Train model
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
     model.fit(Xs, y)
