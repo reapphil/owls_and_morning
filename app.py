@@ -147,8 +147,8 @@ if mode == "input":
 # -----------------------------
 elif mode == "results":
     st.markdown(
-        "<h2 style='text-align:center;'>📊 Morning vs. Night — Results "
-        "<span style='font-size:0.8em;color:#555;'>(Blue = Morning, Red = Night)</span></h2>",
+        "<h2 style='text-align:center;font-size:0.8em'>📊 Morning (Blue) vs. Night (Red) — Results "
+        "</h2>",
         unsafe_allow_html=True
     )
 
