@@ -50,7 +50,6 @@ def generate_sample_data(n=100):
     np.random.seed(42)
     n_half = n // 2
 
-    # Morning people
     morning = pd.DataFrame({
         "timestamp": [datetime.now(timezone.utc).isoformat()] * n_half,
         "wake_time": np.clip(np.random.normal(0.35, 0.15, n_half), 0, 1),
@@ -60,7 +59,6 @@ def generate_sample_data(n=100):
         "label": [1] * n_half,
     })
 
-    # Night owls
     night = pd.DataFrame({
         "timestamp": [datetime.now(timezone.utc).isoformat()] * n_half,
         "wake_time": np.clip(np.random.normal(0.65, 0.15, n_half), 0, 1),
@@ -72,13 +70,11 @@ def generate_sample_data(n=100):
 
     df = pd.concat([morning, night], ignore_index=True)
 
-    # Add mild correlation and noise
     df["wake_time"] = np.clip(
         df["wake_time"] * 0.7 + df["bed_time"] * 0.3 + np.random.normal(0, 0.05, n),
         0, 1
     )
 
-    # Add 5% label noise
     flip_mask = np.random.rand(n) < 0.05
     df.loc[flip_mask, "label"] = 1 - df.loc[flip_mask, "label"]
 
@@ -150,7 +146,11 @@ if mode == "input":
 # RESULTS PAGE
 # -----------------------------
 elif mode == "results":
-    st.title("📊 Morning vs. Night — Results")
+    st.markdown(
+        "<h2 style='text-align:center;'>📊 Morning vs. Night — Results "
+        "<span style='font-size:0.8em;color:#555;'>(Blue = Morning, Red = Night)</span></h2>",
+        unsafe_allow_html=True
+    )
 
     if st.button("🗑️ Clear all responses"):
         if os.path.exists(DATA_FILE):
@@ -197,7 +197,7 @@ elif mode == "results":
             random_state=42
         )
 
-    # Train
+    # Train model
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
     model.fit(Xs, y)
@@ -211,13 +211,35 @@ elif mode == "results":
     )
     Z = model.predict_proba(scaler.transform(np.c_[xx.ravel(), yy.ravel()]))[:, 1].reshape(xx.shape)
 
+    # Optional random point prediction
+    show_prediction = st.button("🎲 Generate Random Person")
+
+    random_point = None
+    prediction_text = None
+    if show_prediction:
+        random_point = np.random.rand(1, 2)  # (wake_time, bed_time)
+        scaled_pt = scaler.transform(random_point)
+        pred = model.predict(scaled_pt)[0]
+        pred_label = "🌅 Morning Person" if pred == 1 else "🌙 Night Owl"
+        prediction_text = f"Model prediction for random person: **{pred_label}**"
+
+    # Plot
     fig, ax = plt.subplots(figsize=(5, 4))
     cs = ax.contourf(xx, yy, Z, levels=30, cmap="coolwarm", alpha=0.25)
     ax.scatter(X[:, 0], X[:, 1], c=y, cmap="bwr", edgecolor="k", s=70)
+
+    if random_point is not None:
+        ax.scatter(random_point[:, 0], random_point[:, 1],
+                   s=150, color="limegreen", edgecolor="black", marker="o", label="Random Person")
+        ax.legend(loc="upper left")
+
     ax.set_xlabel("Wake-up time (early ⟶ late)")
     ax.set_ylabel("Bedtime (early ⟶ late)")
-    ax.set_title(f"Decision Boundary — {model_name}")
+    ax.set_title(f"Decision Boundary — {model_name}", fontsize=12)
     render_matplotlib(fig, width_pct=50)
+
+    if prediction_text:
+        st.markdown(f"<p style='text-align:center;font-size:1.1em;'>{prediction_text}</p>", unsafe_allow_html=True)
 
     st.markdown("---")
     st.subheader("📈 Model Stats")
