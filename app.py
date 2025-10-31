@@ -44,43 +44,43 @@ def append_row(row):
     except Timeout:
         st.error("File is busy — please try again in a few seconds.")
 
-def generate_sample_data(n=50):
-    """Generate fuzzy, overlapping sample data — not linearly separable."""
+def generate_sample_data(n=100):
+    """Generate realistic overlapping sample data — moderately fuzzy, not linearly separable."""
     np.random.seed(42)
     n_half = n // 2
 
-    # Morning people: early wake, early bed, moderate coffee, high energy
+    # Morning people: earlier wake/bed, moderate coffee, higher energy
     morning = pd.DataFrame({
         "timestamp": [datetime.now(timezone.utc).isoformat()] * n_half,
-        "wake_time": np.clip(np.random.normal(0.4, 0.25, n_half), 0, 1),
-        "bed_time": np.clip(np.random.normal(0.45, 0.25, n_half), 0, 1),
-        "coffee": np.clip(np.random.normal(0.5, 0.3, n_half), 0, 1),
-        "energy": np.clip(np.random.normal(0.65, 0.25, n_half), 0, 1),
-        "label": [1] * n_half,
+        "wake_time": np.clip(np.random.normal(0.35, 0.15, n_half), 0, 1),
+        "bed_time": np.clip(np.random.normal(0.4, 0.15, n_half), 0, 1),
+        "coffee": np.clip(np.random.normal(0.45, 0.2, n_half), 0, 1),
+        "energy": np.clip(np.random.normal(0.7, 0.2, n_half), 0, 1),
+        "label": [1] * n_half,  # 1 = morning
     })
 
-    # Night owls: late wake, late bed, more coffee, lower morning energy
+    # Night owls: later wake/bed, more coffee, lower morning energy
     night = pd.DataFrame({
         "timestamp": [datetime.now(timezone.utc).isoformat()] * n_half,
-        "wake_time": np.clip(np.random.normal(0.6, 0.25, n_half), 0, 1),
-        "bed_time": np.clip(np.random.normal(0.6, 0.25, n_half), 0, 1),
-        "coffee": np.clip(np.random.normal(0.6, 0.3, n_half), 0, 1),
-        "energy": np.clip(np.random.normal(0.45, 0.25, n_half), 0, 1),
-        "label": [0] * n_half,
+        "wake_time": np.clip(np.random.normal(0.65, 0.15, n_half), 0, 1),
+        "bed_time": np.clip(np.random.normal(0.65, 0.15, n_half), 0, 1),
+        "coffee": np.clip(np.random.normal(0.6, 0.2, n_half), 0, 1),
+        "energy": np.clip(np.random.normal(0.45, 0.2, n_half), 0, 1),
+        "label": [0] * n_half,  # 0 = night
     })
 
     df = pd.concat([morning, night], ignore_index=True)
 
-    # Add mild correlation: late sleepers tend to wake later
-    df["wake_time"] = np.clip(df["wake_time"] * 0.7 + df["bed_time"] * 0.3 + np.random.normal(0, 0.1, n), 0, 1)
+    # Add mild correlation and noise to make clusters natural
+    df["wake_time"] = np.clip(
+        df["wake_time"] * 0.7 + df["bed_time"] * 0.3 + np.random.normal(0, 0.05, n),
+        0, 1
+    )
 
-    # Add random label noise (5–10%)
-    flip_mask = np.random.rand(n) < 0.08
-    df.loc[flip_mask, "label"] = 1 - df.loc[flip_mask, "label"]
+    # Add small random label noise (~5%)
+    flip_mask = np.random.rand(n) < 0.05
+    df.loc[flip_ma_]()
 
-    # Shuffle
-    df = df.sample(frac=1, random_state=99).reset_index(drop=True)
-    return df
 
 def load_data():
     if not os.path.exists(DATA_FILE):
