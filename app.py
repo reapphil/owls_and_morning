@@ -18,7 +18,7 @@ from sklearn.metrics import accuracy_score
 # Setup
 # -----------------------------
 st.set_page_config(
-    page_title="Morning vs. Night AI Demo",
+    page_title="Early Bird vs. Night Owl AI Demo",
     page_icon="🧠",
     layout="wide"
 )
@@ -52,7 +52,7 @@ def append_row(row: dict) -> None:
 
 
 def generate_sample_data(n=100):
-    np.random.seed(62)
+    np.random.seed(42)
     n_half = n // 2
 
     morning = pd.DataFrame({
@@ -136,13 +136,13 @@ mode = get_mode()
 # INPUT PAGE
 # -----------------------------
 if mode == "input":
-    st.title("🌅 Morning vs. Night — Audience Input")
+    st.title("🌅 Early Bird vs. Night Owl — Audience Input")
 
     wake = st.slider("Wake-up time (very early → very late)", 0.0, 1.0, 0.5)
     bed = st.slider("Bedtime (very early → very late)", 0.0, 1.0, 0.5)
     coffee = st.slider("Coffee consumption (none → a lot)", 0.0, 1.0, 0.5)
     energy = st.slider("Morning energy (low → high)", 0.0, 1.0, 0.5)
-    label = st.radio("Are you a morning person?", ["No", "Yes"], horizontal=True)
+    label = st.radio("Are you an Early Bird?", ["No", "Yes"], horizontal=True)
 
     if st.button("Submit"):
         append_row({
@@ -160,7 +160,7 @@ if mode == "input":
 # -----------------------------
 elif mode == "results":
     st.markdown(
-        "<h2 style='text-align:center'>📊 Morning (Blue) vs. Night (Red)</h2>",
+        "<h2 style='text-align:center'>📊 Early Bird (Red) vs. Night Owl (Blue)</h2>",
         unsafe_allow_html=True,
     )
 
@@ -234,7 +234,7 @@ elif mode == "results":
         pred = model.predict(
             scaler.transform(st.session_state.random_point)
         )[0]
-        label_txt = "🌅 Morning" if pred == 1 else "🌙 Night"
+        label_txt = "🌅 Early Bird" if pred == 1 else "🌙 Night Owl"
         st.session_state.prediction_text = f"Model says: **{label_txt}**"
 
     random_point = st.session_state.random_point
