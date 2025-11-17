@@ -86,9 +86,11 @@ def load_data():
     #    df.to_csv(DATA_FILE, index=False)
     #    return df
     #df = pd.read_csv(DATA_FILE)
-    if df.empty:
-        df = generate_sample_data()
-        df.to_csv(DATA_FILE, index=False)
+    #if df.empty:
+    #    df = generate_sample_data()
+    #    df.to_csv(DATA_FILE, index=False)
+    df = generate_sample_data()
+    df.to_csv(DATA_FILE, index=False)
     return ensure_columns(df)
 
 def get_mode():
