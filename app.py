@@ -52,7 +52,7 @@ def append_row(row: dict) -> None:
 
 
 def generate_sample_data(n=100):
-    #np.random.seed(42)
+    np.random.seed(62)
     n_half = n // 2
 
     morning = pd.DataFrame({
