@@ -81,11 +81,11 @@ def generate_sample_data(n=100):
     return df.sample(frac=1, random_state=99).reset_index(drop=True)
 
 def load_data():
-    if not os.path.exists(DATA_FILE):
-        df = generate_sample_data()
-        df.to_csv(DATA_FILE, index=False)
-        return df
-    df = pd.read_csv(DATA_FILE)
+    #if not os.path.exists(DATA_FILE):
+    #    df = generate_sample_data()
+    #    df.to_csv(DATA_FILE, index=False)
+    #    return df
+    #df = pd.read_csv(DATA_FILE)
     if df.empty:
         df = generate_sample_data()
         df.to_csv(DATA_FILE, index=False)
