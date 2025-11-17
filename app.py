@@ -222,4 +222,96 @@ elif mode == "results":
     else:
         st.sidebar.subheader("🧠 Neural Network Settings")
         num_layers = st.sidebar.slider("Hidden layers", 1, 4, 2)
-        neurons = st.sidebar.slider("Neurons per lay
+        neurons = st.sidebar.slider("Neurons per layer", 2, 20, 8)
+        activation = st.sidebar.selectbox("Activation", ["relu", "tanh", "logistic"])
+        alpha = st.sidebar.slider("Regularization (alpha)", 0.0001, 0.05, 0.001, step=0.0005)
+        lr = st.sidebar.slider("Learning rate", 0.0001, 0.1, 0.01, step=0.0005)
+        iters = st.sidebar.slider("Iterations", 200, 5000, 2000, step=100)
+
+        hidden_layers = tuple([neurons] * num_layers)
+        model = MLPClassifier(
+            hidden_layer_sizes=hidden_layers,
+            activation=activation,
+            alpha=alpha,
+            learning_rate_init=lr,
+            max_iter=iters,
+            random_state=42,
+        )
+
+    # --- Modell trainieren ---
+    scaler = StandardScaler()
+    Xs = scaler.fit_transform(X)
+    model.fit(Xs, y)
+
+    # --- Entscheidungsgrenze berechnen ---
+    x_min, x_max = X[:, 0].min() - 0.1, X[:, 0].max() + 0.1
+    y_min, y_max = X[:, 1].min() - 0.1, X[:, 1].max() + 0.1
+    xx, yy = np.meshgrid(
+        np.linspace(x_min, x_max, 300),
+        np.linspace(y_min, y_max, 300),
+    )
+    Z = model.predict_proba(scaler.transform(np.c_[xx.ravel(), yy.ravel()]))[:, 1].reshape(xx.shape)
+
+    # --- Zufallspunkt (immer neue bei Klick, immer sichtbar) ---
+    random_point = None
+    prediction_text = None
+    if random_trigger:
+        random_point = np.random.rand(1, 2)  # (wake_time, bed_time)
+        scaled_pt = scaler.transform(random_point)
+        pred = model.predict(scaled_pt)[0]
+        pred_label = "🌅 Morning Person" if pred == 1 else "🌙 Night Owl"
+        prediction_text = f"Model prediction for random person: **{pred_label}**"
+
+    # --- Plot ---
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.contourf(xx, yy, Z, levels=30, cmap="coolwarm", alpha=0.25)
+    ax.scatter(X[:, 0], X[:, 1], c=y, cmap="bwr", edgecolor="k", s=70)
+
+    if random_point is not None:
+        ax.scatter(
+            random_point[:, 0],
+            random_point[:, 1],
+            s=150,
+            color="limegreen",
+            edgecolor="black",
+            marker="o",
+            label="Random Person",
+        )
+        ax.legend(loc="upper left")
+
+    ax.set_xlabel("Wake-up time (early ⟶ late)")
+    ax.set_ylabel("Bedtime (early ⟶ late)")
+    ax.set_title(f"Decision Boundary — {model_name}", fontsize=12)
+
+    render_matplotlib(fig, width_pct=diagram_width)
+
+    if prediction_text:
+        st.markdown(
+            f"<p style='text-align:center;font-size:1.1em;'>{prediction_text}</p>",
+            unsafe_allow_html=True,
+        )
+
+    # --- Stats und Download ---
+    st.markdown("---")
+    st.subheader("📈 Model Stats")
+    st.write(f"👥 {len(y)} responses collected.")
+
+    if len(y) >= 6:
+        split = int(0.8 * len(y))
+        Xtr, Xte = Xs[:split], Xs[split:]
+        ytr, yte = y[:split], y[split:]
+        acc = accuracy_score(yte, model.fit(Xtr, ytr).predict(Xte))
+        st.metric("Holdout accuracy", f"{acc*100:.1f}%")
+
+    st.download_button(
+        "⬇️ Download responses (CSV)",
+        df.to_csv(index=False).encode(),
+        "responses.csv",
+        "text/csv",
+    )
+
+# -----------------------------
+# FALLBACK
+# -----------------------------
+else:
+    st.error("Unknown mode. Use ?mode=input or ?mode=results in the URL.")
