@@ -14,11 +14,11 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score
 
-# -----------------------------
+# -------------------------------------------
 # Setup
-# -----------------------------
+# -------------------------------------------
 st.set_page_config(
-    page_title="Morning vs. Night AI Demo",
+    page_title="Early Bird vs. Night Owl Demo",
     page_icon="🧠",
     layout="wide"
 )
@@ -26,9 +26,10 @@ st.set_page_config(
 DATA_FILE = "responses.csv"
 LOCK_FILE = DATA_FILE + ".lock"
 
-# -----------------------------
+
+# -------------------------------------------
 # Data utilities
-# -----------------------------
+# -------------------------------------------
 def ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     expected = ["timestamp", "wake_time", "bed_time", "coffee", "energy", "label"]
     for col in expected:
@@ -63,7 +64,7 @@ def generate_sample_data(n: int = 100) -> pd.DataFrame:
         "bed_time": np.clip(np.random.normal(0.40, 0.15, n_half), 0, 1),
         "coffee":   np.clip(np.random.normal(0.45, 0.20, n_half), 0, 1),
         "energy":   np.clip(np.random.normal(0.70, 0.20, n_half), 0, 1),
-        "label":    [1] * n_half,  # 1 = morning
+        "label":    [1] * n_half,
     })
 
     night = pd.DataFrame({
@@ -72,7 +73,7 @@ def generate_sample_data(n: int = 100) -> pd.DataFrame:
         "bed_time": np.clip(np.random.normal(0.65, 0.15, n_half), 0, 1),
         "coffee":   np.clip(np.random.normal(0.60, 0.20, n_half), 0, 1),
         "energy":   np.clip(np.random.normal(0.45, 0.20, n_half), 0, 1),
-        "label":    [0] * n_half,  # 0 = night
+        "label":    [0] * n_half,
     })
 
     df = pd.concat([morning, night], ignore_index=True)
@@ -85,7 +86,7 @@ def generate_sample_data(n: int = 100) -> pd.DataFrame:
         1,
     )
 
-    # ca. 5 % Labelrauschen
+    # ca. 5 % Label noise
     flip_mask = np.random.rand(n_total) < 0.05
     df.loc[flip_mask, "label"] = 1 - df.loc[flip_mask, "label"]
 
@@ -93,10 +94,7 @@ def generate_sample_data(n: int = 100) -> pd.DataFrame:
 
 
 def load_data() -> pd.DataFrame:
-    """
-    Für deine Demo: immer neue Sample-Daten generieren
-    (unabhängig von Dateiinhalt).
-    """
+    """Always generate new sample data for your demo."""
     df = generate_sample_data()
     df.to_csv(DATA_FILE, index=False)
     return ensure_columns(df)
@@ -108,6 +106,7 @@ def get_mode() -> str:
         qp = st.query_params
     except Exception:
         qp = st.experimental_get_query_params()
+
     val = qp.get("mode", "input")
     if isinstance(val, list):
         val = val[0] if val else "input"
@@ -115,10 +114,9 @@ def get_mode() -> str:
 
 
 def render_matplotlib(fig: plt.Figure, width_pct: int = 70) -> None:
-    """Render Matplotlib figure as responsive image without großen Rand."""
+    """Render Matplotlib figure as responsive image without large border."""
     buf = io.BytesIO()
 
-    # möglichst wenig Rand & Transparenz
     fig.patch.set_facecolor("none")
     for ax in fig.axes:
         ax.set_facecolor("none")
@@ -144,22 +142,23 @@ def render_matplotlib(fig: plt.Figure, width_pct: int = 70) -> None:
     plt.close(fig)
 
 
-# -----------------------------
+# -------------------------------------------
 # Determine mode
-# -----------------------------
+# -------------------------------------------
 mode = get_mode()
 
-# -----------------------------
+
+# -------------------------------------------
 # INPUT PAGE
-# -----------------------------
+# -------------------------------------------
 if mode == "input":
-    st.title("🌅 Morning vs. Night — Audience Input")
+    st.title("🌅 Early Bird vs. Night Owl — Audience Input")
 
     wake = st.slider("Wake-up time (very early ⟶ very late)", 0.0, 1.0, 0.5)
     bed = st.slider("Bedtime (very early ⟶ very late)", 0.0, 1.0, 0.5)
     coffee = st.slider("Coffee consumption (no coffee ⟶ a lot of coffee)", 0.0, 1.0, 0.5)
     energy = st.slider("Morning energy (very low ⟶ very high)", 0.0, 1.0, 0.5)
-    label = st.radio("Are you a morning person?", ["No", "Yes"], horizontal=True)
+    label = st.radio("Are you an early bird?", ["No", "Yes"], horizontal=True)
 
     if st.button("Submit ✅"):
         append_row({
@@ -170,63 +169,68 @@ if mode == "input":
             "energy": energy,
             "label": 1 if label == "Yes" else 0,
         })
-        st.success("✅ Submitted! Thank you for participating!")
+        st.success("Submitted! Thank you!")
 
-# -----------------------------
+
+# -------------------------------------------
 # RESULTS PAGE
-# -----------------------------
+# -------------------------------------------
 elif mode == "results":
     st.markdown(
-        "<h2 style='text-align:center'>📊 Morning (Blue) vs. Night (Red) — Results</h2>",
+        "<h2 style='text-align:center'>📊 Early Bird (Red) vs. Night Owl (Blue) — Results</h2>",
         unsafe_allow_html=True,
     )
 
-    # --- Daten laden (immer frisch generiert) ---
+    # --- Data ---
     df = load_data()
     df = df.dropna(subset=["wake_time", "bed_time", "label"])
     X = df[["wake_time", "bed_time"]].astype(float).values
     y = df["label"].astype(int).values
 
-    # ---- SIDEBAR: Controls ----
+    # Sidebar
     st.sidebar.header("⚙️ Controls")
 
-    # Buttons oben in der Sidebar
+    # Clear button
     if st.sidebar.button("🗑️ Clear all responses"):
         if os.path.exists(DATA_FILE):
             os.remove(DATA_FILE)
         st.sidebar.success("All responses deleted.")
         st.stop()
 
-    random_trigger = st.sidebar.button("🎲 Generate Random Person")
-
+    # Diagram scaling
     st.sidebar.subheader("📏 Diagram Size")
     diagram_width = st.sidebar.slider("Diagram width (%)", 30, 100, 70)
 
-    # Modellwahl
+    # Random-point button
+    random_trigger = st.sidebar.button("🎲 Generate Random Person")
+
+    # Model selection
     st.sidebar.subheader("Model Settings")
     model_name = st.sidebar.selectbox(
         "Select model type:",
         ["Logistic Regression", "k-Nearest Neighbors", "Decision Tree", "Neural Network"],
-        index=0,
     )
 
-    # Modell konfigurieren
+    # Configure model
     if model_name == "Logistic Regression":
         model = LogisticRegression()
+
     elif model_name == "k-Nearest Neighbors":
         k = st.sidebar.slider("Number of neighbors (k)", 1, 15, 5)
         model = KNeighborsClassifier(n_neighbors=k)
+
     elif model_name == "Decision Tree":
         depth = st.sidebar.slider("Max depth", 1, 10, 3)
         model = DecisionTreeClassifier(max_depth=depth, random_state=42)
+
     else:
         st.sidebar.subheader("🧠 Neural Network Settings")
         num_layers = st.sidebar.slider("Hidden layers", 1, 4, 2)
         neurons = st.sidebar.slider("Neurons per layer", 2, 20, 8)
         activation = st.sidebar.selectbox("Activation", ["relu", "tanh", "logistic"])
-        alpha = st.sidebar.slider("Regularization (alpha)", 0.0001, 0.05, 0.001, step=0.0005)
-        lr = st.sidebar.slider("Learning rate", 0.0001, 0.1, 0.01, step=0.0005)
-        iters = st.sidebar.slider("Iterations", 200, 5000, 2000, step=100)
+        alpha = st.sidebar.slider("Regularization (alpha)", 0.0001, 0.05, 0.001)
+        lr = st.sidebar.slider("Learning rate", 0.0001, 0.1, 0.01)
+        iters = st.sidebar.slider("Iterations", 200, 5000, 2000)
 
         hidden_layers = tuple([neurons] * num_layers)
         model = MLPClassifier(
@@ -238,12 +242,12 @@ elif mode == "results":
             random_state=42,
         )
 
-    # --- Modell trainieren ---
+    # Train model
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
     model.fit(Xs, y)
 
-    # --- Entscheidungsgrenze berechnen ---
+    # Decision boundary
     x_min, x_max = X[:, 0].min() - 0.1, X[:, 0].max() + 0.1
     y_min, y_max = X[:, 1].min() - 0.1, X[:, 1].max() + 0.1
     xx, yy = np.meshgrid(
@@ -252,17 +256,26 @@ elif mode == "results":
     )
     Z = model.predict_proba(scaler.transform(np.c_[xx.ravel(), yy.ravel()]))[:, 1].reshape(xx.shape)
 
-    # --- Zufallspunkt (immer neue bei Klick, immer sichtbar) ---
-    random_point = None
-    prediction_text = None
-    if random_trigger:
-        random_point = np.random.rand(1, 2)  # (wake_time, bed_time)
-        scaled_pt = scaler.transform(random_point)
-        pred = model.predict(scaled_pt)[0]
-        pred_label = "🌅 Morning Person" if pred == 1 else "🌙 Night Owl"
-        prediction_text = f"Model prediction for random person: **{pred_label}**"
+    # -------------------------------------------
+    # Persistent random point (Session State!)
+    # -------------------------------------------
+    if "random_point" not in st.session_state:
+        st.session_state.random_point = None
+        st.session_state.prediction_text = None
 
-    # --- Plot ---
+    if random_trigger:
+        st.session_state.random_point = np.random.rand(1, 2)
+        scaled_pt = scaler.transform(st.session_state.random_point)
+        pred = model.predict(scaled_pt)[0]
+        pred_label = "🌅 Early Bird" if pred == 1 else "🌙 Night Owl"
+        st.session_state.prediction_text = f"Model prediction for random person: **{pred_label}**"
+
+    random_point = st.session_state.random_point
+    prediction_text = st.session_state.prediction_text
+
+    # -------------------------------------------
+    # Plot
+    # -------------------------------------------
     fig, ax = plt.subplots(figsize=(6, 5))
     ax.contourf(xx, yy, Z, levels=30, cmap="coolwarm", alpha=0.25)
     ax.scatter(X[:, 0], X[:, 1], c=y, cmap="bwr", edgecolor="k", s=70)
@@ -271,7 +284,7 @@ elif mode == "results":
         ax.scatter(
             random_point[:, 0],
             random_point[:, 1],
-            s=150,
+            s=180,
             color="limegreen",
             edgecolor="black",
             marker="o",
@@ -291,7 +304,7 @@ elif mode == "results":
             unsafe_allow_html=True,
         )
 
-    # --- Stats und Download ---
+    # Stats
     st.markdown("---")
     st.subheader("📈 Model Stats")
     st.write(f"👥 {len(y)} responses collected.")
@@ -310,8 +323,9 @@ elif mode == "results":
         "text/csv",
     )
 
-# -----------------------------
-# FALLBACK
-# -----------------------------
+
+# -------------------------------------------
+# Fallback
+# -------------------------------------------
 else:
     st.error("Unknown mode. Use ?mode=input or ?mode=results in the URL.")
